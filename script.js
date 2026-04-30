@@ -1,42 +1,13 @@
 
 // THEME TOGGLE
-        const themeToggleBtn = document.getElementById('themeToggle');
-        const themeIconSpan = themeToggleBtn ? themeToggleBtn.querySelector('i') : null;
-        const savedTheme = localStorage.getItem('theme') || (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
-        document.documentElement.setAttribute('data-theme', savedTheme);
-        function updateThemeIcon(theme) { 
-            if (themeIconSpan) themeIconSpan.className = theme === 'light' ? 'fas fa-sun' : 'fas fa-moon'; 
-        }
-        updateThemeIcon(savedTheme);
-        themeToggleBtn?.addEventListener('click', () => {
-            const current = document.documentElement.getAttribute('data-theme');
-            const newTheme = current === 'light' ? 'dark' : 'light';
-            document.documentElement.setAttribute('data-theme', newTheme);
-            localStorage.setItem('theme', newTheme);
-            updateThemeIcon(newTheme);
-        });
+      // THEME — follows system preference
+const savedTheme = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+document.documentElement.setAttribute('data-theme', savedTheme);
 
-        // ARC THEME TOGGLE
-        const arcThemeBtn = document.getElementById('arcThemeBtn');
-        const arcThemeIcon = document.getElementById('arcThemeIcon');
-
-        function updateArcThemeIcon(theme) {
-            if (arcThemeIcon) arcThemeIcon.className = theme === 'light' ? 'fas fa-sun' : 'fas fa-moon';
-        }
-
-        updateArcThemeIcon(savedTheme);
-
-        arcThemeBtn?.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            const current = document.documentElement.getAttribute('data-theme');
-            const newTheme = current === 'light' ? 'dark' : 'light';
-            document.documentElement.setAttribute('data-theme', newTheme);
-            localStorage.setItem('theme', newTheme);
-            updateThemeIcon(newTheme);
-            updateArcThemeIcon(newTheme);
-            if (arcOpen) toggleArc(e);
-        });
+// Listen for system theme changes in real time
+window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', e => {
+    document.documentElement.setAttribute('data-theme', e.matches ? 'light' : 'dark');
+});
 
         // PRICING MODAL
         const pricingBackdrop = document.getElementById('pricingBackdrop');
@@ -467,7 +438,7 @@
                 galleryCount.textContent = '0 projects';
                 return;
             }
-            filtered.forEach((d, i) => {
+           filtered.slice(0, 6).forEach((d, i) => {
                 const pin = buildPin(d);
                 pin.style.opacity = '0';
                 pinGrid.appendChild(pin);
@@ -522,4 +493,232 @@
 
         toolCards.forEach(card => barObserver.observe(card));
 
+// ========== 3 PAGE STRUCTURE ==========
+const galleryView = document.getElementById('galleryView');
+const searchView  = document.getElementById('searchView');
+const galleryBack = document.getElementById('galleryBack');
+const searchBack  = document.getElementById('searchBack');
+const openSearch  = document.getElementById('openSearch');
+const arcGalleryBtn = document.getElementById('arcGalleryBtn');
+const searchInput   = document.getElementById('searchInput');
+const searchClear   = document.getElementById('searchClear');
+const searchSuggestions = document.getElementById('searchSuggestions');
+const galleryPinGrid    = document.getElementById('galleryPinGrid');
+const loadMoreBtn       = document.getElementById('loadMoreBtn');
+const loadMoreWrap      = document.getElementById('loadMoreWrap');
 
+const PAGE_SIZE = 8;
+let galleryFilter  = 'all';
+let galleryPage    = 0;
+let galleryExpand  = null;
+
+// Open / close views
+function openView(view) {
+    view.classList.add('active');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeView(view) {
+    view.classList.remove('active');
+    document.body.style.overflow = '';
+}
+
+// Arc gallery button
+arcGalleryBtn?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (arcOpen) toggleArc(e);
+    setTimeout(() => {
+        openView(galleryView);
+        renderGalleryView();
+    }, 150);
+});
+
+// Back buttons
+galleryBack?.addEventListener('click', () => closeView(galleryView));
+searchBack?.addEventListener('click', () => {
+    closeView(searchView);
+    searchInput.value = '';
+    searchClear.classList.remove('visible');
+    renderSuggestions('');
+});
+
+// Open search from gallery
+openSearch?.addEventListener('click', () => {
+    openView(searchView);
+    setTimeout(() => searchInput.focus(), 300);
+    renderSuggestions('');
+});
+
+// ── Gallery View rendering ──
+function getGalleryFiltered() {
+    return galleryFilter === 'all'
+        ? DESIGNS
+        : DESIGNS.filter(d => d.category === galleryFilter);
+}
+
+function renderGalleryView() {
+    galleryPage = 0;
+    galleryExpand = null;
+    galleryPinGrid.innerHTML = '';
+    loadMoreWrap.style.display = 'flex';
+    renderGalleryPage();
+}
+
+function renderGalleryPage() {
+    const filtered = getGalleryFiltered();
+    const start = galleryPage * PAGE_SIZE;
+    const slice = filtered.slice(start, start + PAGE_SIZE);
+
+    slice.forEach((d, i) => {
+        const pin = buildGalleryPin(d);
+        pin.style.opacity = '0';
+        galleryPinGrid.appendChild(pin);
+        setTimeout(() => {
+            pin.style.opacity = '1';
+            pin.classList.add('fade-in');
+        }, i * 40);
+    });
+
+    galleryPage++;
+
+    // Hide load more if no more designs
+    if (galleryPage * PAGE_SIZE >= filtered.length) {
+        loadMoreWrap.style.display = 'none';
+    }
+}
+
+function buildGalleryPin(d) {
+    const item = document.createElement('div');
+    item.className = 'pin-item';
+    item.dataset.id = d.id;
+
+    const imgHtml = d.image
+        ? `<img class="pin-img" src="${d.image}" alt="${d.title}" style="height:${d.height}px;">`
+        : `<div class="pin-placeholder" style="height:${d.height}px;"><i class="fas ${d.icon}"></i></div>`;
+
+    item.innerHTML = `
+        ${imgHtml}
+        <div class="pin-overlay">
+            <div class="pin-overlay-title">${d.title}</div>
+            <div class="pin-overlay-tag">${d.category}</div>
+        </div>`;
+
+    item.addEventListener('click', () => toggleGalleryExpand(d));
+    return item;
+}
+
+function toggleGalleryExpand(d) {
+    // Remove existing expand
+    const existing = galleryPinGrid.querySelector('.pin-expand-row');
+    if (existing) existing.remove();
+
+    if (galleryExpand === d.id) {
+        galleryExpand = null;
+        return;
+    }
+
+    galleryExpand = d.id;
+    const clickedPin = galleryPinGrid.querySelector(`.pin-item[data-id="${d.id}"]`);
+    if (!clickedPin) return;
+
+    const expandRow = buildExpandRow(d);
+    clickedPin.after(expandRow);
+    setTimeout(() => {
+        expandRow.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, 80);
+}
+
+// Load more button
+loadMoreBtn?.addEventListener('click', renderGalleryPage);
+
+// Gallery filter buttons
+document.querySelectorAll('.gallery-filter-bar .filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('.gallery-filter-bar .filter-btn')
+            .forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        galleryFilter = btn.dataset.filter;
+        renderGalleryView();
+    });
+});
+
+// ── Search View ──
+searchInput?.addEventListener('input', () => {
+    const val = searchInput.value.trim();
+    searchClear.classList.toggle('visible', val.length > 0);
+    renderSuggestions(val);
+});
+
+searchClear?.addEventListener('click', () => {
+    searchInput.value = '';
+    searchClear.classList.remove('visible');
+    renderSuggestions('');
+    searchInput.focus();
+});
+
+function renderSuggestions(query) {
+    const q = query.toLowerCase();
+    const results = q.length === 0
+        ? DESIGNS.slice(0, 12)
+        : DESIGNS.filter(d =>
+            d.title.toLowerCase().includes(q) ||
+            d.category.toLowerCase().includes(q) ||
+            (d.description && d.description.toLowerCase().includes(q)) ||
+            (d.tools && d.tools.some(t => t.toLowerCase().includes(q)))
+        );
+
+    if (results.length === 0) {
+        searchSuggestions.innerHTML = `
+            <div class="search-empty">
+                <i class="fas fa-search"></i>
+                <p>No designs found for "${query}"</p>
+            </div>`;
+        return;
+    }
+
+    searchSuggestions.innerHTML = results.map(d => `
+        <div class="suggestion-item" data-id="${d.id}">
+            <div class="suggestion-thumb">
+                ${d.image
+                    ? `<img src="${d.image}" alt="${d.title}">`
+                    : `<i class="fas ${d.icon}"></i>`}
+            </div>
+            <div class="suggestion-info">
+                <div class="suggestion-title">${d.title}</div>
+                <div class="suggestion-category">${d.category}</div>
+            </div>
+        </div>
+    `).join('');
+
+    // Tap suggestion — go back to gallery focused on that design
+    searchSuggestions.querySelectorAll('.suggestion-item').forEach(item => {
+        item.addEventListener('click', () => {
+            const id = parseInt(item.dataset.id);
+            const design = DESIGNS.find(d => d.id === id);
+            if (!design) return;
+            closeView(searchView);
+            searchInput.value = '';
+            searchClear.classList.remove('visible');
+            // Reset gallery and open expand for selected design
+            galleryFilter = design.category;
+            document.querySelectorAll('.gallery-filter-bar .filter-btn').forEach(b => {
+                b.classList.toggle('active', b.dataset.filter === design.category);
+            });
+            renderGalleryView();
+            setTimeout(() => toggleGalleryExpand(design), 400);
+        });
+    });
+}
+document.getElementById('viewAllBtn')?.addEventListener('click', () => {
+    openView(galleryView);
+    renderGalleryView();
+});
+
+document.getElementById('viewToolsBtn')?.addEventListener('click', () => {
+    openView(document.getElementById('toolsView'));
+});
+
+document.getElementById('toolsBack')?.addEventListener('click', () => {
+    closeView(document.getElementById('toolsView'));
+});
